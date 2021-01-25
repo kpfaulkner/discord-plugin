@@ -11,7 +11,7 @@ func main() {
 	// Start listening to requests send from Grafana. This call is blocking so
 	// it wont finish until Grafana shutsdown the process or the plugin choose
 	// to exit close down by itself
-	err := datasource.Serve(newSendgridDataSource())
+	err := datasource.Serve(newDiscordDataSource())
 
 	// Log any error if we could start the plugin.
 	if err != nil {

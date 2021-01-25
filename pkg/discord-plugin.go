@@ -1,46 +1,21 @@
 package main
 
 import (
-  "context"
-  "encoding/json"
-  "fmt"
-  "net/http"
-  "os"
-  "time"
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"os"
+	"time"
 
-  "github.com/grafana/grafana-plugin-sdk-go/backend"
-  "github.com/grafana/grafana-plugin-sdk-go/backend/datasource"
-  "github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
-  "github.com/grafana/grafana-plugin-sdk-go/backend/log"
-  "github.com/grafana/grafana-plugin-sdk-go/data"
-  "github.com/sendgrid/sendgrid-go"
+	"github.com/grafana/grafana-plugin-sdk-go/backend"
+	"github.com/grafana/grafana-plugin-sdk-go/backend/datasource"
+	"github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
+	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
+	"github.com/grafana/grafana-plugin-sdk-go/data"
 )
 
-type SendgridStats []struct {
-	Date  string `json:"date"`
-	Stats []struct {
-		Metrics struct {
-			Blocks           int `json:"blocks"`
-			BounceDrops      int `json:"bounce_drops"`
-			Bounces          int `json:"bounces"`
-			Clicks           int `json:"clicks"`
-			Deferred         int `json:"deferred"`
-			Delivered        int `json:"delivered"`
-			InvalidEmails    int `json:"invalid_emails"`
-			Opens            int `json:"opens"`
-			Processed        int `json:"processed"`
-			Requests         int `json:"requests"`
-			SpamReportDrops  int `json:"spam_report_drops"`
-			SpamReports      int `json:"spam_reports"`
-			UniqueClicks     int `json:"unique_clicks"`
-			UniqueOpens      int `json:"unique_opens"`
-			UnsubscribeDrops int `json:"unsubscribe_drops"`
-			Unsubscribes     int `json:"unsubscribes"`
-		} `json:"metrics"`
-	} `json:"stats"`
-}
-
-type SendgridQuery struct {
+type DiscordQuery struct {
 	Constant      float64 `json:"constant"`
 	Datasource    string  `json:"datasource"`
 	DatasourceID  int     `json:"datasourceId"`
@@ -51,22 +26,21 @@ type SendgridQuery struct {
 	RefID         string  `json:"refId"`
 }
 
-type SendgridPluginConfig struct {
-	SendgridAPIKey string `json:"sendgridApiKey"`
+type DiscordPluginConfig struct {
+	DiscordToken string `json:"discordToken"`
 }
 
-// newSendgridDataSource returns datasource.ServeOpts.
-func newSendgridDataSource() datasource.ServeOpts {
+// newDiscordDataSource returns datasource.ServeOpts.
+func newDiscordDataSource() datasource.ServeOpts {
 	// creates a instance manager for your plugin. The function passed
 	// into `NewInstanceManger` is called when the instance is created
 	// for the first time or when a datasource configuration changed.
 	im := datasource.NewInstanceManager(newDataSourceInstance)
 
-	apiKey := os.Getenv("SENDGRID_API_KEY")
-	ds := &SendgridDataSource{
-		im:             im,
-		sendgridApiKey: apiKey,
-		host:           "https://api.sendgrid.com",
+	token := os.Getenv("DISCORD_TOKEN")
+	ds := &DiscordDataSource{
+		im:           im,
+		discordToken: token,
 	}
 
 	return datasource.ServeOpts{
@@ -75,30 +49,30 @@ func newSendgridDataSource() datasource.ServeOpts {
 	}
 }
 
-// SendgridDataSource.... all things DD :)
-type SendgridDataSource struct {
+// DiscordDataSource.... all things discord!
+type DiscordDataSource struct {
 	// The instance manager can help with lifecycle management
 	// of datasource instances in plugins. It's not a requirements
 	// but a best practice that we recommend that you follow.
 	im instancemgmt.InstanceManager
 
-	// Sendgrid API key
-	sendgridApiKey string
-	host           string
+	// Discord Token
+	discordToken string
+	host         string
 }
 
 // QueryData handles multiple queries and returns multiple responses.
 // req contains the queries []DataQuery (where each query contains RefID as a unique identifer).
 // The QueryDataResponse contains a map of RefID to the response for each query, and each response
 // contains Frames ([]*Frame).
-func (td *SendgridDataSource) QueryData(ctx context.Context, req *backend.QueryDataRequest) (*backend.QueryDataResponse, error) {
+func (td *DiscordDataSource) QueryData(ctx context.Context, req *backend.QueryDataRequest) (*backend.QueryDataResponse, error) {
 	configBytes, _ := req.PluginContext.DataSourceInstanceSettings.JSONData.MarshalJSON()
-	var config SendgridPluginConfig
+	var config DiscordPluginConfig
 	err := json.Unmarshal(configBytes, &config)
 	if err != nil {
 		return nil, err
 	}
-	td.sendgridApiKey = config.SendgridAPIKey
+	td.discordToken = config.DiscordToken
 
 	// create response struct
 	response := backend.NewQueryDataResponse()
@@ -122,43 +96,17 @@ type queryModel struct {
 	Format string `json:"format"`
 }
 
-func (td *SendgridDataSource) querySendGrid(fromDate time.Time, toDate time.Time) (*SendgridStats, error) {
-	request := sendgrid.GetRequest(td.sendgridApiKey, "/v3/stats", td.host)
-	request.Method = "GET"
-	queryParams := make(map[string]string)
-	queryParams["aggregated_by"] = "day"
-	queryParams["limit"] = "1"
-	queryParams["start_date"] = fromDate.UTC().Format("2006-01-02")
-	queryParams["end_date"] = toDate.UTC().Format("2006-01-02")
-	queryParams["offset"] = "1"
-	request.QueryParams = queryParams
-	resp, err := sendgrid.API(request)
-	if err != nil {
-		log.DefaultLogger.Error(fmt.Sprintf("Cannot query sendgrid : %s", err.Error()))
-		return nil, err
-	}
-
-  log.DefaultLogger.Error(fmt.Sprintf("sendgrid body is : %s", resp.Body))
-
-  var sgStats SendgridStats
-	err = json.Unmarshal([]byte(resp.Body), &sgStats)
-	return &sgStats, err
+func (td *DiscordDataSource) queryDiscord(fromDate time.Time, toDate time.Time) (string, error) {
+	return "discord answers!!!", nil
 }
 
-func addField( fields []*data.Field, name string, dataPoints []int64) []*data.Field {
-  fields = append(fields,
-    data.NewField(name, nil, dataPoints),
-  )
-  return fields
-}
-
-func (td *SendgridDataSource) query(ctx context.Context, query backend.DataQuery) (*backend.DataResponse, error) {
+func (td *DiscordDataSource) query(ctx context.Context, query backend.DataQuery) (*backend.DataResponse, error) {
 	// Unmarshal the json into our queryModel
 	var qm queryModel
 
 	queryBytes, _ := query.JSON.MarshalJSON()
-	var sgQuery SendgridQuery
-	err := json.Unmarshal(queryBytes, &sgQuery)
+	var dQuery DiscordQuery
+	err := json.Unmarshal(queryBytes, &dQuery)
 	if err != nil {
 		// empty response? or real error? figure out later.
 		return nil, err
@@ -175,7 +123,7 @@ func (td *SendgridDataSource) query(ctx context.Context, query backend.DataQuery
 		log.DefaultLogger.Warn("format is empty. defaulting to time series")
 	}
 
-	sgStats, err := td.querySendGrid(query.TimeRange.From, query.TimeRange.To)
+	// sgStats, err := td.querySendGrid(query.TimeRange.From, query.TimeRange.To)
 	if err != nil {
 		return nil, err
 	}
@@ -185,66 +133,40 @@ func (td *SendgridDataSource) query(ctx context.Context, query backend.DataQuery
 
 	// generate time slice.
 	times := []time.Time{}
-	blocks := []int64{}
-	bounceDrops := []int64{}
-	bounces := []int64{}
-	clicks := []int64{}
-	deferred := []int64{}
-	delivered := []int64{}
-	invalidEmails := []int64{}
-	opens := []int64{}
-	processed := []int64{}
-	requests := []int64{}
-	spamReportDrops := []int64{}
-	spamReports := []int64{}
-	uniqueClicks := []int64{}
-	uniqueOpens := []int64{}
-	unsubscribeDrops := []int64{}
-	unsubscribes := []int64{}
+	something := []int64{}
 
-	// go through
-	for _, res := range *sgStats {
-		t, _ := time.Parse("2006-01-02", res.Date)
-		times = append(times, t)
+	/*
+		// go through
+		for _, res := range *sgStats {
+			t, _ := time.Parse("2006-01-02", res.Date)
+			times = append(times, t)
 
-		requests = append(requests, int64(res.Stats[0].Metrics.Requests))
-		blocks = append(blocks, int64(res.Stats[0].Metrics.Blocks))
-		bounceDrops = append(bounceDrops, int64(res.Stats[0].Metrics.BounceDrops))
-		bounces = append(bounces, int64(res.Stats[0].Metrics.Bounces))
-		clicks = append(clicks, int64(res.Stats[0].Metrics.Clicks))
-		deferred = append(deferred, int64(res.Stats[0].Metrics.Deferred))
-		delivered = append(delivered, int64(res.Stats[0].Metrics.Delivered))
-		invalidEmails = append(invalidEmails, int64(res.Stats[0].Metrics.InvalidEmails))
-		opens = append(opens, int64(res.Stats[0].Metrics.Opens))
-		processed = append(processed, int64(res.Stats[0].Metrics.Processed))
-		spamReportDrops = append(spamReportDrops, int64(res.Stats[0].Metrics.SpamReportDrops))
-		spamReports = append(spamReports, int64(res.Stats[0].Metrics.SpamReports))
-		uniqueClicks = append(uniqueClicks, int64(res.Stats[0].Metrics.UniqueClicks))
-		uniqueOpens = append(uniqueOpens, int64(res.Stats[0].Metrics.UniqueOpens))
-		unsubscribeDrops = append(unsubscribeDrops, int64(res.Stats[0].Metrics.UnsubscribeDrops))
-		unsubscribes = append(unsubscribes, int64(res.Stats[0].Metrics.Unsubscribes))
-	}
+			requests = append(requests, int64(res.Stats[0].Metrics.Requests))
+			blocks = append(blocks, int64(res.Stats[0].Metrics.Blocks))
+			bounceDrops = append(bounceDrops, int64(res.Stats[0].Metrics.BounceDrops))
+			bounces = append(bounces, int64(res.Stats[0].Metrics.Bounces))
+			clicks = append(clicks, int64(res.Stats[0].Metrics.Clicks))
+			deferred = append(deferred, int64(res.Stats[0].Metrics.Deferred))
+			delivered = append(delivered, int64(res.Stats[0].Metrics.Delivered))
+			invalidEmails = append(invalidEmails, int64(res.Stats[0].Metrics.InvalidEmails))
+			opens = append(opens, int64(res.Stats[0].Metrics.Opens))
+			processed = append(processed, int64(res.Stats[0].Metrics.Processed))
+			spamReportDrops = append(spamReportDrops, int64(res.Stats[0].Metrics.SpamReportDrops))
+			spamReports = append(spamReports, int64(res.Stats[0].Metrics.SpamReports))
+			uniqueClicks = append(uniqueClicks, int64(res.Stats[0].Metrics.UniqueClicks))
+			uniqueOpens = append(uniqueOpens, int64(res.Stats[0].Metrics.UniqueOpens))
+			unsubscribeDrops = append(unsubscribeDrops, int64(res.Stats[0].Metrics.UnsubscribeDrops))
+			unsubscribes = append(unsubscribes, int64(res.Stats[0].Metrics.Unsubscribes))
+		}
+	*/
 
 	frame.Fields = append(frame.Fields,
 		data.NewField("time", nil, times),
 	)
 
-  frame.Fields = addField(frame.Fields, "processed", processed)
-	frame.Fields = addField(frame.Fields, "opens", opens)
-  frame.Fields = addField(frame.Fields, "bounceDrops", bounceDrops)
-  frame.Fields = addField(frame.Fields, "bounces", bounces)
-  frame.Fields = addField(frame.Fields, "blocks", blocks)
-  frame.Fields = addField(frame.Fields, "clicks", clicks)
-  frame.Fields = addField(frame.Fields, "deferred", deferred)
-  frame.Fields = addField(frame.Fields, "delivered", delivered)
-  frame.Fields = addField(frame.Fields, "invalidEmails", invalidEmails)
-  frame.Fields = addField(frame.Fields, "requests", requests)
-  frame.Fields = addField(frame.Fields, "spamReportDrops", spamReportDrops)
-  frame.Fields = addField(frame.Fields, "spamReports", spamReports)
-  frame.Fields = addField(frame.Fields, "uniqueClicks", uniqueClicks)
-  frame.Fields = addField(frame.Fields, "uniqueOpens", uniqueOpens)
-  frame.Fields = addField(frame.Fields, "unsubscribeDrops", unsubscribeDrops)
-  frame.Fields = addField(frame.Fields, "unsubscribes", unsubscribes)
+	frame.Fields = append(frame.Fields,
+		data.NewField("something", nil, something),
+	)
 
 	// add the frames to the response
 	response.Frames = append(response.Frames, frame)
@@ -255,30 +177,34 @@ func (td *SendgridDataSource) query(ctx context.Context, query backend.DataQuery
 // The main use case for these health checks is the test button on the
 // datasource configuration page which allows users to verify that
 // a datasource is working as expected.
-func (td *SendgridDataSource) CheckHealth(ctx context.Context, req *backend.CheckHealthRequest) (*backend.CheckHealthResult, error) {
+func (td *DiscordDataSource) CheckHealth(ctx context.Context, req *backend.CheckHealthRequest) (*backend.CheckHealthResult, error) {
 
-  var status = backend.HealthStatusOk
-  var message = "Data source is working"
+	var status = backend.HealthStatusOk
+	var message = "Data source is working"
 
-  configBytes, _ := req.PluginContext.DataSourceInstanceSettings.JSONData.MarshalJSON()
-  var config SendgridPluginConfig
-  err := json.Unmarshal(configBytes, &config)
-  if err != nil {
-    log.DefaultLogger.Error(fmt.Sprintf("Cannot get healthcheck query : %s", err.Error()))
-    status = backend.HealthStatusError
-    message = "Unable to contact Sendgrid"
-  }
+	configBytes, _ := req.PluginContext.DataSourceInstanceSettings.JSONData.MarshalJSON()
+	var config DiscordPluginConfig
+	err := json.Unmarshal(configBytes, &config)
+	if err != nil {
+		log.DefaultLogger.Error(fmt.Sprintf("Cannot get healthcheck query : %s", err.Error()))
+		status = backend.HealthStatusError
+		message = "Unable to contact Sendgrid"
+	}
 
-  td.sendgridApiKey = config.SendgridAPIKey
-	from := time.Now().UTC().Add(-24*time.Hour)
-  to := time.Now().UTC()
+	/*
+	  td.sendgridApiKey = config.SendgridAPIKey
+		from := time.Now().UTC().Add(-24*time.Hour)
+	  to := time.Now().UTC()
+	*/
 
-  _, err = td.querySendGrid(from, to)
-  if err != nil {
-    log.DefaultLogger.Error(fmt.Sprintf("Cannot query sendgrid for healthcheck: %s", err.Error()))
-    status = backend.HealthStatusError
-    message = "Unable to contact Sendgrid"
-  }
+	/*
+	  _, err = td.querySendGrid(from, to)
+	  if err != nil {
+	    log.DefaultLogger.Error(fmt.Sprintf("Cannot query sendgrid for healthcheck: %s", err.Error()))
+	    status = backend.HealthStatusError
+	    message = "Unable to contact Sendgrid"
+	  }
+	*/
 
 	return &backend.CheckHealthResult{
 		Status:  status,
