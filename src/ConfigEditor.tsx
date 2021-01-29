@@ -53,8 +53,8 @@ export class ConfigEditor extends PureComponent<Props, State> {
         <div className="gf-form">
           <FormField
             label="DiscordGuildID"
-            labelWidth={6}
-            inputWidth={20}
+            labelWidth={10}
+            inputWidth={30}
             onChange={this.onGuildIDChange}
             value={jsonData.discordGuildID || ''}
             placeholder="Discord Guild ID"
@@ -62,8 +62,8 @@ export class ConfigEditor extends PureComponent<Props, State> {
 
           <FormField
             label="DiscordGuildIDKey"
-            labelWidth={6}
-            inputWidth={20}
+            labelWidth={10}
+            inputWidth={30}
             onChange={this.onGuildIDKeyChange}
             value={jsonData.discordGuildIDKey || ''}
             placeholder="Discord Guild ID Key"
