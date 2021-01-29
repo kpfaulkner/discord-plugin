@@ -1,13 +1,13 @@
 {
   "type": "datasource",
-  "name": "sendgrid-plugin",
-  "id": "kpfaulkner-sendgrid-plugin",
+  "name": "discord-plugin",
+  "id": "kpfaulkner-discord-plugin",
   "metrics": true,
   "backend": true,
   "alerting": true,
-  "executable": "gpx_sendgrid-plugin",
+  "executable": "discord-plugin",
   "info": {
-    "description": "Sendgrid stats",
+    "description": "Discord stats",
     "author": {
       "name": "Ken Faulkner",
       "url": ""

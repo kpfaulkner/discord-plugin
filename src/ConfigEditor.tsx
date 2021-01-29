@@ -10,11 +10,20 @@ interface Props extends DataSourcePluginOptionsEditorProps<MyDataSourceOptions> 
 interface State {}
 
 export class ConfigEditor extends PureComponent<Props, State> {
-  onApiKeyChange = (event: ChangeEvent<HTMLInputElement>) => {
+  onGuildIDChange = (event: ChangeEvent<HTMLInputElement>) => {
     const { onOptionsChange, options } = this.props;
     const jsonData = {
       ...options.jsonData,
-      sendgridApiKey: event.target.value,
+      discordGuildID: event.target.value,
+    };
+    onOptionsChange({ ...options, jsonData });
+  };
+
+  onGuildIDKeyChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const { onOptionsChange, options } = this.props;
+    const jsonData = {
+      ...options.jsonData,
+      discordGuildIDKey: event.target.value,
     };
     onOptionsChange({ ...options, jsonData });
   };
@@ -43,12 +52,21 @@ export class ConfigEditor extends PureComponent<Props, State> {
       <div className="gf-form-group">
         <div className="gf-form">
           <FormField
-            label="SendgridApiKey"
+            label="DiscordGuildID"
             labelWidth={6}
             inputWidth={20}
-            onChange={this.onApiKeyChange}
-            value={jsonData.sendgridApiKey || ''}
-            placeholder="Sendgrid API Key"
+            onChange={this.onGuildIDChange}
+            value={jsonData.discordGuildID || ''}
+            placeholder="Discord Guild ID"
+          />
+
+          <FormField
+            label="DiscordGuildIDKey"
+            labelWidth={6}
+            inputWidth={20}
+            onChange={this.onGuildIDKeyChange}
+            value={jsonData.discordGuildIDKey || ''}
+            placeholder="Discord Guild ID Key"
           />
         </div>
       </div>

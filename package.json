@@ -1,7 +1,7 @@
 {
-  "name": "kpfaulkner-sendgrid-plugin",
-  "version": "0.1.1",
-  "description": "test",
+  "name": "kpfaulkner-discord-plugin",
+  "version": "0.1.0",
+  "description": "basic discord stats",
   "scripts": {
     "build": "grafana-toolkit plugin:build",
     "test": "grafana-toolkit plugin:test",

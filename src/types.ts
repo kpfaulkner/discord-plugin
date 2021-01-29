@@ -10,10 +10,11 @@ export const defaultQuery: Partial<MyQuery> = {
 };
 
 /**
- * These are options configured for each Sendgrid instance
+ * These are options configured for each Discord Guild
  */
 export interface MyDataSourceOptions extends DataSourceJsonData {
- sendgridApiKey?: string;
+  discordGuildID?: string;     // From Discord
+  discordGuildIDKey?: string;  // Made up for this plugin.
 }
 
 
