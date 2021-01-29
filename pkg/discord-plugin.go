@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	log2 "github.com/sirupsen/logrus"
 	"net/http"
 	"os"
-	"time"
+  "path/filepath"
+  "time"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/datasource"
@@ -15,6 +17,18 @@ import (
 	"github.com/grafana/grafana-plugin-sdk-go/data"
 )
 
+const (
+	NumberOfUsersQuery       string = "numusers"
+	NumberOfUsersJoinedQuery string = "numjoined"
+	NumberOfUsersLeftQuery   string = "numleft"
+	NumberOfMessagesQuery    string = "nummessages"
+)
+
+type DataPoint struct {
+  TimeStamp time.Time
+  Val int64
+}
+
 type DiscordQuery struct {
 	Constant      float64 `json:"constant"`
 	Datasource    string  `json:"datasource"`
@@ -22,7 +36,7 @@ type DiscordQuery struct {
 	IntervalMs    int     `json:"intervalMs"`
 	MaxDataPoints int     `json:"maxDataPoints"`
 	OrgID         int     `json:"orgId"`
-  RGSplit       string  `json:"rgSplit"`
+	RGSplit       string  `json:"rgSplit"`
 	RefID         string  `json:"refId"`
 }
 
@@ -43,6 +57,14 @@ func newDiscordDataSource() datasource.ServeOpts {
 		discordToken: token,
 	}
 
+  pluginExecutablePath := os.Args[0]
+  pluginDir := filepath.Dir(pluginExecutablePath)
+	config, err := LoadConfig( filepath.Join(pluginDir, "discord.json"))
+	if err != nil {
+		log2.Fatalf("Unable to read discord config. Exiting")
+	}
+
+	ds.dbHelper = NewAzureDBHelper(*config, "botbotgo", "bbgadmin")
 	return datasource.ServeOpts{
 		QueryDataHandler:   ds,
 		CheckHealthHandler: ds,
@@ -55,6 +77,8 @@ type DiscordDataSource struct {
 	// of datasource instances in plugins. It's not a requirements
 	// but a best practice that we recommend that you follow.
 	im instancemgmt.InstanceManager
+
+	dbHelper AzureDBHelper
 
 	// Discord Token
 	discordToken string
@@ -75,7 +99,7 @@ func (td *DiscordDataSource) QueryData(ctx context.Context, req *backend.QueryDa
 	td.discordToken = config.DiscordToken
 
 	fmt.Printf("req is %v\n", *req)
-  log.DefaultLogger.Warn(fmt.Sprintf("req is %v\n", req.Queries))
+	log.DefaultLogger.Warn(fmt.Sprintf("req is %v\n", req.Queries))
 
 	// create response struct
 	response := backend.NewQueryDataResponse()
@@ -115,8 +139,15 @@ func (td *DiscordDataSource) query(ctx context.Context, query backend.DataQuery)
 		return nil, err
 	}
 
-  log.DefaultLogger.Warn(fmt.Sprintf("single query is  is %v\n", dQuery.RGSplit))
+	log.DefaultLogger.Warn(fmt.Sprintf("single query is  is %v\n", dQuery.RGSplit))
 
+	queryResponse,err := td.doDiscordQuery(dQuery, query.TimeRange.From, query.TimeRange.To)
+	if err != nil {
+    log.DefaultLogger.Error(fmt.Sprintf("Unable to query discord", err.Error()))
+    return nil, err
+  }
+
+	// consolidate data into grafana response.
 	response := backend.DataResponse{}
 	response.Error = json.Unmarshal(query.JSON, &qm)
 	if response.Error != nil {
@@ -128,49 +159,25 @@ func (td *DiscordDataSource) query(ctx context.Context, query backend.DataQuery)
 		log.DefaultLogger.Warn("format is empty. defaulting to time series")
 	}
 
-	// sgStats, err := td.querySendGrid(query.TimeRange.From, query.TimeRange.To)
-	if err != nil {
-		return nil, err
-	}
-
 	// create data frame response
 	frame := data.NewFrame("response")
 
-	// generate time slice.
 	times := []time.Time{}
-	something := []int64{}
+	counts := []int64{}
 
-	/*
-		// go through
-		for _, res := range *sgStats {
-			t, _ := time.Parse("2006-01-02", res.Date)
-			times = append(times, t)
-
-			requests = append(requests, int64(res.Stats[0].Metrics.Requests))
-			blocks = append(blocks, int64(res.Stats[0].Metrics.Blocks))
-			bounceDrops = append(bounceDrops, int64(res.Stats[0].Metrics.BounceDrops))
-			bounces = append(bounces, int64(res.Stats[0].Metrics.Bounces))
-			clicks = append(clicks, int64(res.Stats[0].Metrics.Clicks))
-			deferred = append(deferred, int64(res.Stats[0].Metrics.Deferred))
-			delivered = append(delivered, int64(res.Stats[0].Metrics.Delivered))
-			invalidEmails = append(invalidEmails, int64(res.Stats[0].Metrics.InvalidEmails))
-			opens = append(opens, int64(res.Stats[0].Metrics.Opens))
-			processed = append(processed, int64(res.Stats[0].Metrics.Processed))
-			spamReportDrops = append(spamReportDrops, int64(res.Stats[0].Metrics.SpamReportDrops))
-			spamReports = append(spamReports, int64(res.Stats[0].Metrics.SpamReports))
-			uniqueClicks = append(uniqueClicks, int64(res.Stats[0].Metrics.UniqueClicks))
-			uniqueOpens = append(uniqueOpens, int64(res.Stats[0].Metrics.UniqueOpens))
-			unsubscribeDrops = append(unsubscribeDrops, int64(res.Stats[0].Metrics.UnsubscribeDrops))
-			unsubscribes = append(unsubscribes, int64(res.Stats[0].Metrics.Unsubscribes))
-		}
-	*/
+  // go through
+  for _, res := range queryResponse {
+    //t, _ := time.Parse("2006-01-02", res.TimeStamp)
+    times = append(times, res.TimeStamp)
+    counts = append(counts, res.Val)
+  }
 
 	frame.Fields = append(frame.Fields,
 		data.NewField("time", nil, times),
 	)
 
 	frame.Fields = append(frame.Fields,
-		data.NewField("something", nil, something),
+		data.NewField("something", nil, counts),
 	)
 
 	// add the frames to the response
@@ -197,9 +204,9 @@ func (td *DiscordDataSource) CheckHealth(ctx context.Context, req *backend.Check
 	}
 
 	/*
-	  td.sendgridApiKey = config.SendgridAPIKey
-		from := time.Now().UTC().Add(-24*time.Hour)
-	  to := time.Now().UTC()
+		  td.sendgridApiKey = config.SendgridAPIKey
+			from := time.Now().UTC().Add(-24*time.Hour)
+		  to := time.Now().UTC()
 	*/
 
 	/*
@@ -216,6 +223,71 @@ func (td *DiscordDataSource) CheckHealth(ctx context.Context, req *backend.Check
 		Message: message,
 	}, nil
 }
+
+func (td *DiscordDataSource) getNumberOfMessages(query DiscordQuery,fromTime time.Time, toTime time.Time) ([]DataPoint, error) {
+
+  // dummy data for now.
+  data := []DataPoint{}
+
+  data = append(data, DataPoint{ TimeStamp: fromTime, Val: 1})
+  data = append(data, DataPoint{ TimeStamp: fromTime.Add( time.Minute * 5), Val: 2})
+  data = append(data, DataPoint{ TimeStamp: fromTime.Add( time.Minute * 10), Val: 5})
+  data = append(data, DataPoint{ TimeStamp: fromTime.Add( time.Minute * 15), Val: 3})
+	return data,  nil
+}
+
+func (td *DiscordDataSource) getNumberOfUsers(query DiscordQuery,fromTime time.Time, toTime time.Time) ([]DataPoint, error) {
+	return nil,  nil
+}
+
+func (td *DiscordDataSource) getNumberOfUsersJoined(query DiscordQuery,fromTime time.Time, toTime time.Time) ([]DataPoint, error) {
+	return nil,  nil
+}
+
+func (td *DiscordDataSource) getNumberOfUsersLeft(query DiscordQuery,fromTime time.Time, toTime time.Time) ([]DataPoint, error) {
+	return nil,  nil
+}
+
+
+func (td *DiscordDataSource) doDiscordQuery(dQuery DiscordQuery, fromTime time.Time, toTime time.Time) ([]DataPoint, error) {
+
+  data := []DataPoint{}
+  var err error
+
+  switch dQuery.RGSplit {
+  case NumberOfMessagesQuery:
+    data , err = td.getNumberOfMessages(dQuery,fromTime, toTime)
+    if err != nil {
+      log.DefaultLogger.Error(fmt.Sprintf("Unable to get number of discord messages: %s", err.Error()))
+      return nil, err
+    }
+
+  case NumberOfUsersJoinedQuery:
+    data , err = td.getNumberOfUsersJoined(dQuery,fromTime, toTime)
+    if err != nil {
+      log.DefaultLogger.Error(fmt.Sprintf("Unable to get number of discord users joined: %s", err.Error()))
+      return nil, err
+    }
+
+  case NumberOfUsersLeftQuery:
+    data , err = td.getNumberOfUsersLeft(dQuery,fromTime, toTime)
+    if err != nil {
+      log.DefaultLogger.Error(fmt.Sprintf("Unable to get number of discord users left: %s", err.Error()))
+      return nil, err
+    }
+
+  case NumberOfUsersQuery:
+    data , err = td.getNumberOfUsers(dQuery,fromTime, toTime)
+    if err != nil {
+      log.DefaultLogger.Error(fmt.Sprintf("Unable to get number of discord users now: %s", err.Error()))
+      return nil, err
+    }
+  }
+
+  return  data, nil
+}
+
+
 
 type instanceSettings struct {
 	httpClient *http.Client
