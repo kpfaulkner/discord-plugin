@@ -22,7 +22,7 @@ type DiscordQuery struct {
 	IntervalMs    int     `json:"intervalMs"`
 	MaxDataPoints int     `json:"maxDataPoints"`
 	OrgID         int     `json:"orgId"`
-	QueryText     string  `json:"queryText"`
+  RGSplit       string  `json:"rgSplit"`
 	RefID         string  `json:"refId"`
 }
 
@@ -74,6 +74,9 @@ func (td *DiscordDataSource) QueryData(ctx context.Context, req *backend.QueryDa
 	}
 	td.discordToken = config.DiscordToken
 
+	fmt.Printf("req is %v\n", *req)
+  log.DefaultLogger.Warn(fmt.Sprintf("req is %v\n", req.Queries))
+
 	// create response struct
 	response := backend.NewQueryDataResponse()
 
@@ -111,6 +114,8 @@ func (td *DiscordDataSource) query(ctx context.Context, query backend.DataQuery)
 		// empty response? or real error? figure out later.
 		return nil, err
 	}
+
+  log.DefaultLogger.Warn(fmt.Sprintf("single query is  is %v\n", dQuery.RGSplit))
 
 	response := backend.DataResponse{}
 	response.Error = json.Unmarshal(query.JSON, &qm)
