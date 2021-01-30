@@ -44,6 +44,7 @@ export class QueryEditor extends PureComponent<Props> {
           value={rgSplit}
           onChange={this.onRGChange}
         >
+          <option value={''}>{'None'}</option>
           <option value={'numusers'}>{'Total Number Of Users'}</option>
           <option value={'numjoined'}>{'Number of Users Joined'}</option>
           <option value={'numleft'}>{'Number of Users Left'}</option>

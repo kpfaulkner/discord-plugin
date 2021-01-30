@@ -41,7 +41,8 @@ type DiscordQuery struct {
 }
 
 type DiscordPluginConfig struct {
-	DiscordToken string `json:"discordToken"`
+	DiscordGuildID string `json:"discordGuildID"`
+  DiscordGuildIDKey string `json:"discordGuildIDKey"`
 }
 
 // newDiscordDataSource returns datasource.ServeOpts.
@@ -51,10 +52,9 @@ func newDiscordDataSource() datasource.ServeOpts {
 	// for the first time or when a datasource configuration changed.
 	im := datasource.NewInstanceManager(newDataSourceInstance)
 
-	token := os.Getenv("DISCORD_TOKEN")
+	//token := os.Getenv("DISCORD_TOKEN")
 	ds := &DiscordDataSource{
 		im:           im,
-		discordToken: token,
 	}
 
   pluginExecutablePath := os.Args[0]
@@ -81,7 +81,9 @@ type DiscordDataSource struct {
 	dbHelper AzureDBHelper
 
 	// Discord Token
-	discordToken string
+	discordGuildID string
+  discordGuildIDKey string
+
 	host         string
 }
 
@@ -96,7 +98,10 @@ func (td *DiscordDataSource) QueryData(ctx context.Context, req *backend.QueryDa
 	if err != nil {
 		return nil, err
 	}
-	td.discordToken = config.DiscordToken
+  td.discordGuildID = config.DiscordGuildID
+	td.discordGuildIDKey = config.DiscordGuildIDKey
+
+  log.DefaultLogger.Warn(fmt.Sprintf("guildid is %s\n",td.discordGuildID))
 
 	fmt.Printf("req is %v\n", *req)
 	log.DefaultLogger.Warn(fmt.Sprintf("req is %v\n", req.Queries))
@@ -141,7 +146,7 @@ func (td *DiscordDataSource) query(ctx context.Context, query backend.DataQuery)
 
 	log.DefaultLogger.Warn(fmt.Sprintf("single query is  is %v\n", dQuery.RGSplit))
 
-	queryResponse,err := td.doDiscordQuery(dQuery, query.TimeRange.From, query.TimeRange.To)
+	title, queryResponse,err := td.doDiscordQuery(dQuery, query.TimeRange.From, query.TimeRange.To)
 	if err != nil {
     log.DefaultLogger.Error(fmt.Sprintf("Unable to query discord", err.Error()))
     return nil, err
@@ -177,7 +182,7 @@ func (td *DiscordDataSource) query(ctx context.Context, query backend.DataQuery)
 	)
 
 	frame.Fields = append(frame.Fields,
-		data.NewField("something", nil, counts),
+		data.NewField(title, nil, counts),
 	)
 
 	// add the frames to the response
@@ -229,62 +234,110 @@ func (td *DiscordDataSource) getNumberOfMessages(query DiscordQuery,fromTime tim
   // dummy data for now.
   data := []DataPoint{}
 
-  data = append(data, DataPoint{ TimeStamp: fromTime, Val: 1})
-  data = append(data, DataPoint{ TimeStamp: fromTime.Add( time.Minute * 5), Val: 2})
-  data = append(data, DataPoint{ TimeStamp: fromTime.Add( time.Minute * 10), Val: 5})
-  data = append(data, DataPoint{ TimeStamp: fromTime.Add( time.Minute * 15), Val: 3})
+  resp, err := td.dbHelper.GetNumberMessageForGuildBetweenTimes(td.discordGuildID, fromTime, toTime, 5)
+  if err != nil {
+    return nil, err
+  }
+
+  for _, r := range resp {
+    data = append(data, DataPoint{ TimeStamp: r.TimeStamp, Val:  r.Count})
+  }
+
 	return data,  nil
 }
 
-func (td *DiscordDataSource) getNumberOfUsers(query DiscordQuery,fromTime time.Time, toTime time.Time) ([]DataPoint, error) {
-	return nil,  nil
+func (td *DiscordDataSource) getNumberOfUsers(query DiscordQuery,fromTime time.Time, toTime time.Time) ( []DataPoint, error) {
+  // dummy data for now.
+  data := []DataPoint{}
+
+  resp, err := td.dbHelper.GetMemberCountForGuildBetweenTimes(td.discordGuildID, fromTime, toTime, 5)
+  if err != nil {
+    return nil, err
+  }
+
+  for _, r := range resp {
+    log2.Infof("Guild %s : time %s : %d members", td.discordGuildID, r.TimeStamp, r.Count )
+    data = append(data, DataPoint{ TimeStamp: r.TimeStamp, Val:  r.Count})
+  }
+
+  return data,  nil
 }
 
-func (td *DiscordDataSource) getNumberOfUsersJoined(query DiscordQuery,fromTime time.Time, toTime time.Time) ([]DataPoint, error) {
-	return nil,  nil
+func (td *DiscordDataSource) getNumberOfUsersJoined(query DiscordQuery,fromTime time.Time, toTime time.Time) ( []DataPoint, error) {
+  // dummy data for now.
+  data := []DataPoint{}
+
+  resp, err := td.dbHelper.GetNumberJoinsForGuildBetweenTimes(td.discordGuildID, fromTime, toTime, 5)
+  if err != nil {
+    return nil, err
+  }
+
+  for _, r := range resp {
+    data = append(data, DataPoint{ TimeStamp: r.TimeStamp, Val:  r.Count})
+  }
+
+
+  return data,  nil
 }
 
-func (td *DiscordDataSource) getNumberOfUsersLeft(query DiscordQuery,fromTime time.Time, toTime time.Time) ([]DataPoint, error) {
-	return nil,  nil
+func (td *DiscordDataSource) getNumberOfUsersLeft(query DiscordQuery,fromTime time.Time, toTime time.Time) ( []DataPoint, error) {
+  // dummy data for now.
+  data := []DataPoint{}
+
+  resp, err := td.dbHelper.GetNumberLeftForGuildBetweenTimes(td.discordGuildID, fromTime, toTime, 5)
+  if err != nil {
+    return nil, err
+  }
+
+  for _, r := range resp {
+    data = append(data, DataPoint{ TimeStamp: r.TimeStamp, Val:  r.Count})
+  }
+
+  return data,  nil
 }
 
 
-func (td *DiscordDataSource) doDiscordQuery(dQuery DiscordQuery, fromTime time.Time, toTime time.Time) ([]DataPoint, error) {
+func (td *DiscordDataSource) doDiscordQuery(dQuery DiscordQuery, fromTime time.Time, toTime time.Time) ( string, []DataPoint, error) {
 
   data := []DataPoint{}
   var err error
+  var title string
 
   switch dQuery.RGSplit {
   case NumberOfMessagesQuery:
     data , err = td.getNumberOfMessages(dQuery,fromTime, toTime)
     if err != nil {
       log.DefaultLogger.Error(fmt.Sprintf("Unable to get number of discord messages: %s", err.Error()))
-      return nil, err
+      return "", nil, err
     }
+    title = "no-messages"
 
   case NumberOfUsersJoinedQuery:
     data , err = td.getNumberOfUsersJoined(dQuery,fromTime, toTime)
     if err != nil {
       log.DefaultLogger.Error(fmt.Sprintf("Unable to get number of discord users joined: %s", err.Error()))
-      return nil, err
+      return "", nil, err
     }
+    title = "no-joins"
 
   case NumberOfUsersLeftQuery:
     data , err = td.getNumberOfUsersLeft(dQuery,fromTime, toTime)
     if err != nil {
       log.DefaultLogger.Error(fmt.Sprintf("Unable to get number of discord users left: %s", err.Error()))
-      return nil, err
+      return "", nil, err
     }
+    title = "no-left"
 
   case NumberOfUsersQuery:
     data , err = td.getNumberOfUsers(dQuery,fromTime, toTime)
     if err != nil {
       log.DefaultLogger.Error(fmt.Sprintf("Unable to get number of discord users now: %s", err.Error()))
-      return nil, err
+      return "", nil, err
     }
+    title = "no-users"
   }
 
-  return  data, nil
+  return  title, data, nil
 }
 
 
