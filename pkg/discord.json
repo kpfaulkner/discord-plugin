@@ -1,0 +1,7 @@
+{
+"Server": "botbotgo.database.windows.net",
+"Port": "1433",
+"Creds":{
+  "bbgadmin": "KL@31LSD6S23Sj2"
+  }
+}
